@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiutil.videodownloader.App
+import com.aiutil.videodownloader.data.DetectionStore
 import com.aiutil.videodownloader.download.HlsDownloader
 import com.aiutil.videodownloader.model.DetectedVideo
 import com.aiutil.videodownloader.model.DownloadHistoryEntry
@@ -38,6 +39,8 @@ class BrowserViewModel : ViewModel() {
         val durationSec: Double,
         /** HLS 용량은 계산으로 가늠한 값이라 "약"을 붙여 보여준다. */
         val isEstimate: Boolean,
+        /** 마스터 없이 비디오 단일 트랙만 잡혔을 때 같은 미디어 ID의 오디오 트랙을 짝짓는다. */
+        val fallbackAudioUrl: String? = null,
     )
 
     var addressText by mutableStateOf("")
@@ -129,7 +132,13 @@ class BrowserViewModel : ViewModel() {
         downloadPlan = null
 
         if (plan.variants.isEmpty()) {
-            enqueue(plan.source.url, plan.source.displayName, plan.kind, plan.source)
+            enqueue(
+                url = plan.source.url,
+                title = plan.source.displayName,
+                kind = plan.kind,
+                source = plan.source,
+                audioUrl = plan.fallbackAudioUrl,
+            )
             return
         }
 
@@ -166,18 +175,26 @@ class BrowserViewModel : ViewModel() {
             MediaKind.HLS -> viewModelScope.launch {
                 resolving = true
                 try {
-                    // 고른 것이 자막이면 같은 화면의 다른 주소로 자동으로 넘어간다.
-                    // 한 영상의 영상 트랙과 자막 트랙은 구분하기 어려워 미리 가려낼 수 없다.
+                    val targetKeys = DetectionStore.extractMediaKeys(video.url)
+                    val priorityOrder = compareBy<DetectedVideo>(
+                        { candidate ->
+                            val isSameMedia = candidate.url == video.url ||
+                                (targetKeys.isNotEmpty() &&
+                                    DetectionStore.extractMediaKeys(candidate.url).any { it in targetKeys })
+                            if (isSameMedia) 0 else 1
+                        },
+                        { HlsDownloader.hlsCandidatePriority(it.url) },
+                    )
+
+                    // 같은 영상의 마스터 플레이리스트를 최우선으로 시도하고,
+                    // 자막·오디오 전용·비디오 하위 트랙은 뒤로 민다.
                     val queue = buildList {
                         add(video)
                         addAll(
                             candidates.filter { it.kind == MediaKind.HLS && it.url != video.url }
                         )
                     }
-                        // 자막처럼 보이는 주소는 뒤로 민다. 안정 정렬이라 나머지 순서는
-                        // 그대로 남는다. 이걸 안 하면 자막을 먼저 시도하느라 시도 횟수를
-                        // 다 써 버리고, 사용자는 될 때까지 버튼을 여러 번 눌러야 한다.
-                        .sortedBy { if (HlsDownloader.looksLikeNonVideo(it.url)) 1 else 0 }
+                        .sortedWith(priorityOrder)
                         .take(MAX_RESOLVE_ATTEMPTS)
 
                     var lastReason: String? = null
@@ -238,8 +255,21 @@ class BrowserViewModel : ViewModel() {
                 variants = emptyList(),
                 durationSec = resolved.playlist.totalDurationSec,
                 isEstimate = true,
+                fallbackAudioUrl = findMatchingAudioUrl(video.url),
             )
         }
+    }
+
+    /** 마스터 없이 비디오 단일 트랙만 해석된 경우, 같은 미디어 번호의 오디오 트랙을 찾아 연결한다. */
+    private fun findMatchingAudioUrl(videoUrl: String): String? {
+        val keys = DetectionStore.extractMediaKeys(videoUrl)
+        if (keys.isEmpty()) return null
+        return candidates.firstOrNull { candidate ->
+            candidate.url != videoUrl &&
+                candidate.kind == MediaKind.HLS &&
+                HlsDownloader.looksAudioOnly(candidate.url) &&
+                DetectionStore.extractMediaKeys(candidate.url).any { it in keys }
+        }?.url
     }
 
     private fun enqueue(
@@ -257,7 +287,11 @@ class BrowserViewModel : ViewModel() {
             pageUrl = source.pageUrl,
             audioUrl = audioUrl,
         )
-        toast = "다운로드를 시작했습니다"
+        toast = if (App.settings.wifiOnly.value && !App.settings.isUnmeteredConnected()) {
+            "Wi-Fi 연결 대기 중 · Wi-Fi에 연결되면 이어받기하세요"
+        } else {
+            "다운로드를 시작했습니다"
+        }
     }
 
     // ----- 즐겨찾기 -----

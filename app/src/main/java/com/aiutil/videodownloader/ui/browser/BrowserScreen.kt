@@ -288,6 +288,7 @@ private fun AddressBar(
     val context = LocalContext.current
     val activeTab = tabManager.activeTab
     var menuOpen by remember { mutableStateOf(false) }
+    val wifiOnly by App.settings.wifiOnly.collectAsStateWithLifecycle()
 
     // 기기 배색(동적 색상)에 맡겼더니 막대 전체가 검게 칠해져 아이콘까지 묻히는
     // 경우가 있었다. 주소창은 길을 잃으면 앱을 쓸 수 없는 곳이라 색을 직접 지정한다.
@@ -431,6 +432,17 @@ private fun AddressBar(
                         onClick = {
                             menuOpen = false
                             viewModel.sheet = BrowserViewModel.Sheet.HISTORY
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Wi-Fi에서만 받기: ${if (wifiOnly) "켜짐" else "꺼짐"}") },
+                        onClick = {
+                            menuOpen = false
+                            val next = !wifiOnly
+                            App.settings.setWifiOnly(next)
+                            viewModel.notify(
+                                if (next) "Wi-Fi에서만 받기를 켰습니다" else "Wi-Fi에서만 받기를 껐습니다"
+                            )
                         },
                     )
 

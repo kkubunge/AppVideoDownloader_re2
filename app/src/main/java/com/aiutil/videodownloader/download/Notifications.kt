@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.aiutil.videodownloader.R
 import com.aiutil.videodownloader.model.DownloadItem
+import com.aiutil.videodownloader.model.DownloadPhase
 import com.aiutil.videodownloader.model.DownloadStatus
 import com.aiutil.videodownloader.ui.MainActivity
 
@@ -55,13 +56,15 @@ object Notifications {
             else -> "${active.size}개 다운로드 중"
         }
 
-        val determinate = running.isNotEmpty() && running.all { it.progress >= 0f }
+        val remuxing = running.any { it.phase == DownloadPhase.REMUXING }
+        val determinate = !remuxing && running.isNotEmpty() && running.all { it.progress >= 0f }
         val percent = if (determinate) {
             (running.sumOf { it.progress.toDouble() } / running.size * 100).toInt()
         } else 0
 
         val text = when {
             running.isEmpty() -> "대기 중"
+            remuxing -> "MP4 변환 중…"
             determinate -> "$percent%"
             else -> "받는 중…"
         }

@@ -71,11 +71,11 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: assembleDebug
+      - name: testAndAssembleDebug
         shell: bash
         run: |
           set -o pipefail
-          gradle assembleDebug --stacktrace --no-daemon \
+          gradle testDebugUnitTest assembleDebug --stacktrace --no-daemon \
             -PbuildId="${GITHUB_SHA:0:7}" \
             -PversionCode="${GITHUB_RUN_NUMBER}" 2>&1 | tee build-output.txt
 

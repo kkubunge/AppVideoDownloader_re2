@@ -6,10 +6,12 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.aiutil.videodownloader.App
 import com.aiutil.videodownloader.core.DebugLog
 import com.aiutil.videodownloader.data.DownloadHistoryStore
 import com.aiutil.videodownloader.data.DownloadStore
 import com.aiutil.videodownloader.model.DownloadItem
+import com.aiutil.videodownloader.model.DownloadPhase
 import com.aiutil.videodownloader.model.DownloadStatus
 import com.aiutil.videodownloader.model.MediaKind
 import com.aiutil.videodownloader.util.Names
@@ -45,6 +47,9 @@ class DownloadManagerCore(
     /** 받는 중인 임시 파일. 완료되기 전까지는 갤러리에 보이지 않는다. */
     private fun partFile(id: String) = File(File(appContext.cacheDir, "downloads"), "$id.part")
 
+    /** HLS 분리 오디오 트랙 임시 파일. */
+    private fun audioPartFile(id: String) = File(File(appContext.cacheDir, "downloads"), "$id.audio")
+
     fun enqueue(
         url: String,
         title: String,
@@ -77,8 +82,21 @@ class DownloadManagerCore(
     fun resume(id: String) = startJob(id)
 
     fun pause(id: String) {
-        store.update(id) { it.copy(status = DownloadStatus.PAUSED) }
+        store.update(id) { it.copy(status = DownloadStatus.PAUSED, errorMessage = null) }
         jobs[id]?.cancel()
+    }
+
+    /** Wi-Fi 전용 모드에서 비과금 네트워크가 끊겼을 때 진행 중 작업을 모두 멈춘다. */
+    fun pauseAllForWifi() {
+        val active = store.items.value.filter { it.status.isActive }
+        if (active.isEmpty()) return
+        DebugLog.log("네트워크", "Wi-Fi 연결 해제로 진행 중 작업 ${active.size}건 일시정지")
+        active.forEach { item ->
+            store.update(item.id) {
+                it.copy(status = DownloadStatus.PAUSED, errorMessage = "Wi-Fi가 끊겨 일시정지됨")
+            }
+            jobs[item.id]?.cancel()
+        }
     }
 
     fun cancel(id: String) {
@@ -86,21 +104,30 @@ class DownloadManagerCore(
         history.markFinished(id, DownloadStatus.CANCELED, sizeBytes = -1)
         val job = jobs[id]
         if (job != null && job.isActive) {
-            job.invokeOnCompletion { partFile(id).delete() }
+            job.invokeOnCompletion {
+                partFile(id).delete()
+                audioPartFile(id).delete()
+            }
             job.cancel()
         } else {
             partFile(id).delete()
+            audioPartFile(id).delete()
         }
     }
 
     fun retry(id: String) {
         partFile(id).delete()
+        audioPartFile(id).delete()
         store.update(id) {
             it.copy(
                 status = DownloadStatus.QUEUED,
+                phase = DownloadPhase.VIDEO,
                 bytesDownloaded = 0,
                 totalBytes = -1,
                 segmentIndex = 0,
+                audioSegmentIndex = 0,
+                audioSegmentCount = 0,
+                audioBytesDownloaded = 0L,
                 errorMessage = null,
             )
         }
@@ -112,6 +139,7 @@ class DownloadManagerCore(
         val item = store.get(id)
         jobs[id]?.cancel()
         partFile(id).delete()
+        audioPartFile(id).delete()
         if (deleteFile && item?.outputUri != null) {
             runCatching {
                 appContext.contentResolver.delete(Uri.parse(item.outputUri), null, null)
@@ -143,6 +171,7 @@ class DownloadManagerCore(
         store.items.value.filter { it.id in idSet }.forEach { item ->
             jobs[item.id]?.cancel()
             partFile(item.id).delete()
+            audioPartFile(item.id).delete()
             if (deleteFile && item.outputUri != null) {
                 runCatching {
                     appContext.contentResolver.delete(Uri.parse(item.outputUri), null, null)
@@ -175,7 +204,10 @@ class DownloadManagerCore(
         val isFailure = { item: DownloadItem ->
             item.status == DownloadStatus.FAILED || item.status == DownloadStatus.CANCELED
         }
-        store.items.value.filter(isFailure).forEach { partFile(it.id).delete() }
+        store.items.value.filter(isFailure).forEach {
+            partFile(it.id).delete()
+            audioPartFile(it.id).delete()
+        }
         store.removeWhere(isFailure)
     }
 
@@ -183,6 +215,16 @@ class DownloadManagerCore(
         if (jobs[id]?.isActive == true) return
         val item = store.get(id) ?: return
         if (item.status == DownloadStatus.COMPLETED) return
+
+        if (App.settings.wifiOnly.value && !App.settings.isUnmeteredConnected()) {
+            store.update(id) {
+                it.copy(
+                    status = DownloadStatus.PAUSED,
+                    errorMessage = "Wi-Fi 연결 대기 중 (Wi-Fi 전용 모드)",
+                )
+            }
+            return
+        }
 
         store.update(id) { it.copy(status = DownloadStatus.QUEUED, errorMessage = null) }
         ensureServiceRunning()
@@ -197,6 +239,16 @@ class DownloadManagerCore(
     private suspend fun runItem(id: String) {
         val item = store.get(id) ?: return
         if (item.status == DownloadStatus.CANCELED) return
+
+        if (App.settings.wifiOnly.value && !App.settings.isUnmeteredConnected()) {
+            store.update(id) {
+                it.copy(
+                    status = DownloadStatus.PAUSED,
+                    errorMessage = "Wi-Fi 연결 대기 중 (Wi-Fi 전용 모드)",
+                )
+            }
+            return
+        }
 
         store.update(id) { it.copy(status = DownloadStatus.RUNNING) }
         DebugLog.log("받기", "시작 · ${item.kind} · ${item.title.take(40)}")
@@ -222,11 +274,30 @@ class DownloadManagerCore(
                         target = part,
                         startSegment = item.segmentIndex,
                         startBytes = item.bytesDownloaded,
-                    ) { index, count, bytes ->
-                        store.update(id, immediate = false) {
-                            it.copy(segmentIndex = index, segmentCount = count, bytesDownloaded = bytes)
-                        }
-                    }
+                        startAudioSegment = item.audioSegmentIndex,
+                        startAudioBytes = item.audioBytesDownloaded,
+                        onProgress = { index, count, bytes ->
+                            store.update(id, immediate = false) {
+                                val nextPhase = if (index < count) DownloadPhase.VIDEO else it.phase
+                                it.copy(
+                                    phase = nextPhase,
+                                    segmentIndex = index,
+                                    segmentCount = count,
+                                    bytesDownloaded = bytes,
+                                )
+                            }
+                        },
+                        onAudioProgress = { aIndex, aCount, aBytes ->
+                            store.update(id, immediate = false) {
+                                it.copy(
+                                    phase = DownloadPhase.AUDIO,
+                                    audioSegmentIndex = aIndex,
+                                    audioSegmentCount = aCount,
+                                    audioBytesDownloaded = aBytes,
+                                )
+                            }
+                        },
+                    )
                     publishHls(id, part, outcome)
                 }
             }
@@ -250,6 +321,7 @@ class DownloadManagerCore(
      * 없어서, 확장자가 mp4여도 갤러리와 기본 재생기가 열지 못한다.
      */
     private fun publishHls(id: String, part: File, outcome: HlsDownloader.Outcome) {
+        store.update(id, immediate = false) { it.copy(phase = DownloadPhase.REMUXING) }
         val converted = File(part.parentFile, "$id.mp4")
         val sources = listOfNotNull(part, outcome.audioFile)
 
@@ -280,6 +352,7 @@ class DownloadManagerCore(
         val item = store.get(id) ?: return
         validateOrThrow(source)
 
+        val sourceBytes = source.length()
         val fileName = Names.withExtension(item.fileName, extension)
         val saved = MediaStoreSaver.save(
             context = appContext,
@@ -287,7 +360,7 @@ class DownloadManagerCore(
             displayName = fileName,
             mimeType = Names.mimeForExtension(extension),
         )
-        val size = item.bytesDownloaded
+        val size = sourceBytes.takeIf { it > 0L } ?: (item.bytesDownloaded + item.audioBytesDownloaded)
 
         store.update(id) {
             it.copy(

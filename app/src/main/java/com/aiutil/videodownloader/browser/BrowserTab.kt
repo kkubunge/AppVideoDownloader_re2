@@ -66,6 +66,9 @@ class BrowserTab(
 
     /** 새 복원이 시작되면 이전 복원 시도를 무효로 만든다. */
     private var restoreToken = 0
+    private var restoringUrl: String? = null
+    private var restoringTargetY: Int = 0
+    private var restoringUntilMs: Long = 0L
     var isLoading by mutableStateOf(false)
         private set
     var canGoBack by mutableStateOf(false)
@@ -112,10 +115,17 @@ class BrowserTab(
             // 번쩍이는 것도 이걸로 막는다.
             setBackgroundColor(android.graphics.Color.WHITE)
 
-            // 보던 자리를 계속 기억해 둔다. 떠날 때 따로 챙기려 하면 이미 늦다.
+            // 보던 자리를 계속 기억해 둔다. 뒤로 가기·로딩 중 초기 scrollY=0으로
+            // 리셋될 때 기존에 기억해 둔 위치를 덮어쓰지 않도록 보호한다.
             setOnScrollChangeListener { _, _, scrollY, _, _ ->
                 val key = snifferClient.currentUrl
-                if (key.isNotBlank()) scrollPositions[key] = scrollY
+                if (key.isBlank()) return@setOnScrollChangeListener
+                val now = System.currentTimeMillis()
+                if (returningBack || isLoading || (key == restoringUrl && now < restoringUntilMs)) {
+                    val prev = scrollPositions[key] ?: 0
+                    if (scrollY < prev) return@setOnScrollChangeListener
+                }
+                scrollPositions[key] = scrollY
             }
 
             settings.apply {
@@ -186,6 +196,7 @@ class BrowserTab(
         }
 
     fun loadUrl(target: String) {
+        clearPendingRestore()
         pendingUrl = null
         url = target
         webView.loadUrl(target)
@@ -194,6 +205,7 @@ class BrowserTab(
 
     /** 시작 화면으로 돌아간다. 보던 페이지를 비우고 찾아 둔 영상도 버린다. */
     fun goHome() {
+        clearPendingRestore()
         pendingUrl = null
         url = ""
         title = ""
@@ -213,28 +225,53 @@ class BrowserTab(
         if (!webView.canGoBack()) return
         // 돌아간 페이지에서 보던 자리로 되돌리기 위한 표시.
         returningBack = true
+        restoringUntilMs = System.currentTimeMillis() + 2_500L
         webView.goBack()
+    }
+
+    private fun clearPendingRestore() {
+        returningBack = false
+        restoringUrl = null
+        restoringTargetY = 0
+        restoringUntilMs = 0L
+        restoreToken++
     }
 
     /**
      * 뒤로 갔을 때 보던 자리로 되돌린다.
      *
-     * 사이트가 스스로 해 주는 곳도 있지만(X 등) 그렇지 않은 곳이 많다. 사이트가
-     * 이미 되돌려 놓았으면 건드리지 않는다.
+     * doUpdateVisitedHistory와 onPageFinished 양쪽에서 불릴 수 있으므로, 복원 중에는
+     * 목표 위치를 유지한 채 타이머를 재설정한다.
      */
     private fun restoreScrollIfReturning(pageUrl: String) {
-        if (!returningBack) return
-        returningBack = false
+        val now = System.currentTimeMillis()
+        val target = when {
+            returningBack -> {
+                returningBack = false
+                val saved = scrollPositions[pageUrl]?.takeIf { it > 0 } ?: return
+                restoringUrl = pageUrl
+                restoringTargetY = saved
+                saved
+            }
 
-        val target = scrollPositions[pageUrl]?.takeIf { it > 0 } ?: return
+            pageUrl == restoringUrl && now < restoringUntilMs && restoringTargetY > 0 -> {
+                restoringTargetY
+            }
+
+            else -> return
+        }
+
+        restoringUntilMs = now + 2_200L
         val token = ++restoreToken
 
         // 내용이 다 그려지기 전에는 그만큼 내려갈 수 없다. 자리가 날 때까지 몇 번 시도한다.
         RESTORE_DELAYS_MS.forEach { delay ->
             webView.postDelayed({
                 if (token != restoreToken) return@postDelayed
-                if (webView.scrollY >= target) return@postDelayed
-                webView.scrollTo(0, target)
+                if (webView.scrollY < target) {
+                    webView.scrollTo(0, target)
+                    webView.evaluateJavascript("window.scrollTo(0, $target);", null)
+                }
             }, delay)
         }
     }
@@ -277,6 +314,6 @@ class BrowserTab(
          * 한 번만 해서는 거의 안 된다. 페이지가 뜬 직후에는 내용이 짧아 그만큼
          * 내려갈 수 없고, 이미지와 지연 로딩이 채워지면서 길어진다.
          */
-        val RESTORE_DELAYS_MS = longArrayOf(120, 300, 600, 1_000, 1_600)
+        val RESTORE_DELAYS_MS = longArrayOf(80, 200, 450, 800, 1_300, 2_000)
     }
 }

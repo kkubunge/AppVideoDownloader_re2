@@ -3,6 +3,7 @@ package com.aiutil.videodownloader.download
 import com.aiutil.videodownloader.core.DebugLog
 import com.aiutil.videodownloader.core.Http
 import com.aiutil.videodownloader.model.HlsVariant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -98,13 +99,46 @@ object HlsDownloader {
     private val SUBTITLE_URL_HINTS = listOf("/sub/", "/subs/", "subtitle", "caption", ".vtt")
 
     /** 소리만 담긴 트랙. HLS 마스터는 영상과 오디오를 따로 담는 일이 흔하다. */
-    private val AUDIO_URL_HINTS = listOf("/mp4a/", "/audio/", "/aac/", "audio-only")
+    private val AUDIO_URL_HINTS = listOf("/mp4a/", "/aud/", "/audio/", "/aac/", "audio-only")
+
+    private val MASTER_URL_HINTS = listOf("/pl/", "master", "playlist.m3u8", "manifest")
+    private val VARIANT_VIDEO_URL_HINTS = listOf(
+        "/vid/", "/avc1/", "/hevc/", "/hvc1/", "/h264/", "/vp09/", "/av01/", "video-only"
+    )
+    private val RESOLUTION_PATH = Regex("""/\d{3,4}x\d{3,4}/""")
 
     const val AUDIO_ONLY_MESSAGE = "소리만 있는 주소입니다. 같은 영상의 영상 주소를 골라 주세요"
 
     fun looksAudioOnly(url: String): Boolean {
         val lower = url.lowercase()
         return AUDIO_URL_HINTS.any { it in lower }
+    }
+
+    /** 화질별 비디오 전용 하위 플레이리스트로 보이는지 판별한다. */
+    fun looksLikeVariantVideo(url: String): Boolean {
+        val lower = url.lowercase()
+        return VARIANT_VIDEO_URL_HINTS.any { it in lower } || RESOLUTION_PATH.containsMatchIn(lower)
+    }
+
+    /** 마스터 플레이리스트(화질·오디오 선택지 포함)로 보이는지 판별한다. */
+    fun looksLikeMaster(url: String): Boolean {
+        if (looksLikeNonVideo(url) || looksLikeVariantVideo(url)) return false
+        val lower = url.lowercase()
+        return MASTER_URL_HINTS.any { it in lower }
+    }
+
+    /**
+     * 같은 영상의 여러 HLS 주소 중 어느 것을 먼저 시도할지 결정하는 우선순위 (작을수록 우선).
+     * 0: 마스터 플레이리스트 (/pl/, master 등) — 화질 목록과 오디오 트랙(#EXT-X-MEDIA)을 모두 가짐
+     * 1: 일반 HLS 주소
+     * 2: 비디오 전용 하위 트랙 (/vid/avc1/720x1280/ 등) — 단독으로 받으면 소리가 빠질 수 있음
+     * 3: 자막·오디오 전용 트랙 (/sub/, /mp4a/, .vtt 등)
+     */
+    fun hlsCandidatePriority(url: String): Int = when {
+        looksLikeNonVideo(url) -> 3
+        looksLikeVariantVideo(url) -> 2
+        looksLikeMaster(url) -> 0
+        else -> 1
     }
 
     /**
@@ -159,6 +193,8 @@ object HlsDownloader {
      *
      * @param startSegment 이어받기 시작할 세그먼트 번호
      * @param startBytes 그 시점까지 기록된 바이트 수. 파일을 여기까지 잘라낸 뒤 이어 쓴다.
+     * @param startAudioSegment 분리된 오디오 트랙 이어받기 시작 세그먼트 번호
+     * @param startAudioBytes 분리된 오디오 트랙 이어받기 시작 바이트 수
      */
     suspend fun download(
         playlistUrl: String,
@@ -167,7 +203,10 @@ object HlsDownloader {
         target: File,
         startSegment: Int,
         startBytes: Long,
+        startAudioSegment: Int = 0,
+        startAudioBytes: Long = 0L,
         onProgress: (segmentIndex: Int, segmentCount: Int, bytes: Long) -> Unit,
+        onAudioProgress: (segmentIndex: Int, segmentCount: Int, bytes: Long) -> Unit = { _, _, _ -> },
     ): Outcome = withContext(Dispatchers.IO) {
         val video = downloadTrack(
             playlistUrl = playlistUrl,
@@ -182,19 +221,22 @@ object HlsDownloader {
         val audioFile = audioUrl?.let { url ->
             val file = File(target.parentFile, "${target.nameWithoutExtension}.audio")
             try {
-                DebugLog.log("HLS", "소리 트랙 받기 시작")
-                // 소리는 영상에 견줘 작아서 이어받기를 따로 챙기지 않는다.
+                DebugLog.log("HLS", "소리 트랙 받기 시작 (조각 ${startAudioSegment}부터)")
                 downloadTrack(
                     playlistUrl = url,
                     headers = headers,
                     target = file,
-                    startSegment = 0,
-                    startBytes = 0,
+                    startSegment = startAudioSegment,
+                    startBytes = startAudioBytes,
                     // 소리 트랙이 맞으므로 '영상이 아니다'로 막으면 안 된다.
                     requireVideo = false,
-                ) { _, _, _ -> }
+                    onProgress = onAudioProgress,
+                )
                 DebugLog.log("HLS", "소리 트랙 ${file.length()}바이트")
                 file
+            } catch (ce: CancellationException) {
+                // 일시정지/취소 시에는 파일을 보존하고 상위로 전파해야 이어받기가 동작한다.
+                throw ce
             } catch (t: Throwable) {
                 // 소리를 못 받았다고 영상까지 버릴 이유는 없다.
                 DebugLog.log("HLS", "소리 트랙 실패 · ${t.message}")
@@ -258,44 +300,46 @@ object HlsDownloader {
 
         target.parentFile?.mkdirs()
         var written = prepareTarget(target, startSegment, startBytes)
-        var index = if (written == 0L) 0 else startSegment
+        val segments = playlist.segments
+        var index = if (written == 0L) 0 else startSegment.coerceAtMost(segments.size)
 
         val keyCache = ConcurrentHashMap<String, ByteArray>()
-        val segments = playlist.segments
         onProgress(index, segments.size, written)
 
-        FileOutputStream(target, written > 0).use { out ->
-            // fMP4는 초기화 세그먼트가 맨 앞에 와야 재생된다.
-            if (written == 0L && playlist.initSegmentUrl != null) {
-                val init = fetchBytes(playlist.initSegmentUrl, headers)
-                out.write(init)
-                written += init.size
-            }
-
-            coroutineScope {
-                val inFlight = ArrayDeque<Deferred<ByteArray>>()
-                var queued = index
-
-                fun queueNext() {
-                    if (queued >= segments.size) return
-                    val segment = segments[queued]
-                    queued++
-                    inFlight.addLast(async(Dispatchers.IO) { fetchSegment(segment, headers, keyCache) })
+        if (index < segments.size) {
+            FileOutputStream(target, written > 0).use { out ->
+                // fMP4는 초기화 세그먼트가 맨 앞에 와야 재생된다.
+                if (written == 0L && playlist.initSegmentUrl != null) {
+                    val init = fetchBytes(playlist.initSegmentUrl, headers)
+                    out.write(init)
+                    written += init.size
                 }
 
-                repeat(PREFETCH) { queueNext() }
+                coroutineScope {
+                    val inFlight = ArrayDeque<Deferred<ByteArray>>()
+                    var queued = index
 
-                while (inFlight.isNotEmpty()) {
-                    coroutineContext.ensureActive()
-                    val data = inFlight.removeFirst().await()
-                    out.write(data)
-                    written += data.size
-                    index++
-                    onProgress(index, segments.size, written)
-                    queueNext()
+                    fun queueNext() {
+                        if (queued >= segments.size) return
+                        val segment = segments[queued]
+                        queued++
+                        inFlight.addLast(async(Dispatchers.IO) { fetchSegment(segment, headers, keyCache) })
+                    }
+
+                    repeat(PREFETCH) { queueNext() }
+
+                    while (inFlight.isNotEmpty()) {
+                        coroutineContext.ensureActive()
+                        val data = inFlight.removeFirst().await()
+                        out.write(data)
+                        written += data.size
+                        index++
+                        onProgress(index, segments.size, written)
+                        queueNext()
+                    }
                 }
+                out.flush()
             }
-            out.flush()
         }
 
         DebugLog.log("HLS", "받기 끝 · ${written}바이트 기록")

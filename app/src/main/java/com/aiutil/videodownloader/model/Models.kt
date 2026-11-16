@@ -12,6 +12,10 @@ enum class DownloadStatus {
     val isTerminal: Boolean get() = this == COMPLETED || this == FAILED || this == CANCELED
 }
 
+/** HLS 다운로드의 세부 진행 단계. */
+@Serializable
+enum class DownloadPhase { VIDEO, AUDIO, REMUXING }
+
 /** 브라우저가 가로챈, 아직 다운로드하지 않은 후보 영상. */
 data class DetectedVideo(
     val url: String,
@@ -91,6 +95,11 @@ data class DownloadItem(
     /** HLS 전용: 이미 기록을 끝낸 세그먼트 수. 이어받기 시작점이 된다. */
     val segmentIndex: Int = 0,
     val segmentCount: Int = 0,
+    val phase: DownloadPhase = DownloadPhase.VIDEO,
+    /** HLS 분리 오디오 전용: 이미 기록을 끝낸 오디오 세그먼트 수와 바이트. */
+    val audioSegmentIndex: Int = 0,
+    val audioSegmentCount: Int = 0,
+    val audioBytesDownloaded: Long = 0L,
     val headers: Map<String, String> = emptyMap(),
     /** 완료 시 MediaStore(또는 파일) URI. */
     val outputUri: String? = null,
@@ -110,6 +119,9 @@ data class DownloadItem(
     val progress: Float
         get() = when {
             status == DownloadStatus.COMPLETED -> 1f
+            phase == DownloadPhase.REMUXING -> -1f
+            phase == DownloadPhase.AUDIO && audioSegmentCount > 0 ->
+                (audioSegmentIndex.toFloat() / audioSegmentCount).coerceIn(0f, 1f)
             kind == MediaKind.HLS && segmentCount > 0 ->
                 (segmentIndex.toFloat() / segmentCount).coerceIn(0f, 1f)
             totalBytes > 0 -> (bytesDownloaded.toFloat() / totalBytes).coerceIn(0f, 1f)

@@ -23,14 +23,13 @@
 
 ### 빌드된 APK 바로 받기 (설치 없이)
 
-로컬에 아무것도 깔지 않고 받으려면 **[Releases의 `latest`](https://github.com/kkubunge/AppVideoDownloader/releases/tag/latest)** 에서
+로컬에 아무것도 깔지 않고 받으려면 **[Releases의 `latest`](https://github.com/kkubunge/AppVideoDownloader_re2/releases/tag/latest)** 에서
 `VideoDownloader-debug.apk`를 내려받으면 됩니다. master에 푸시될 때마다 GitHub Actions가
 빌드해서 이 릴리스를 갱신합니다. 설치하려면 기기에서 '출처를 알 수 없는 앱 설치'를 허용해야 합니다.
 
 ### 검증 상태
-**컴파일은 CI에서 통과합니다** (`.github/workflows/android-build.yml`, `assembleDebug`).
-다만 기기에서의 동작 — 영상 감지 정확도, HLS 병합 결과, 저장소 동작 — 은 실기기 테스트가
-필요하며 아직 검증되지 않았습니다.
+**단위 테스트 및 컴파일은 CI에서 통과합니다** (`.github/workflows/android-build.yml`, `testDebugUnitTest assembleDebug`).
+기반 파서·감지 랭킹 단위 테스트(`M3u8ParserTest`, `DetectionStoreTest`)를 포함하며, 실기기 동작은 APK 설치 후 확인합니다.
 
 ### 버전 조합
 | 항목 | 버전 |
@@ -49,11 +48,12 @@
 ### 지원
 - 일반 웹사이트의 **MP4 등 단일 파일** 영상 (이어받기 지원)
 - **HLS(.m3u8) 스트리밍** — 세그먼트를 모두 받아 하나로 합침
-  - 마스터 플레이리스트면 화질 선택 가능
+  - 마스터 플레이리스트 우선 선택 및 화질 선택 가능 (영상·오디오 분리 스트림 병합 지원)
+  - 분리된 오디오 트랙 세그먼트 경계 이어받기 및 음성/변환 단계 상태 표시
   - AES-128 암호화 플레이리스트 복호화
-  - TS → MP4 재컨테이너화(재인코딩 없음)
+  - TS / fMP4 → MP4 재컨테이너화(재인코딩 없음)
 - 다른 앱에서 **공유하기**로 링크 전달 (새 탭에서 열림)
-- 백그라운드 다운로드(포그라운드 서비스 + 알림), 일시정지 / 이어받기 / 취소
+- 백그라운드 다운로드(포그라운드 서비스 + 알림), 일시정지 / 이어받기 / 취소, **Wi-Fi 전용 모드** 지원
 - `Movies/동영상 다운로더` 폴더에 저장 → 갤러리에서 바로 보임
 - **탭** — 최대 8개까지 동시에 열기. 탭마다 감지 목록이 따로 관리됨
 - **즐겨찾기** — 주소 저장 및 목록에서 바로 열기
@@ -85,6 +85,8 @@ app/src/main/java/com/aiutil/videodownloader/
 │  ├─ DownloadStore.kt          다운로드 목록 영속화 + StateFlow
 │  ├─ DownloadHistoryStore.kt   과거 다운로드 기록(보관함에서 지워도 남음)
 │  ├─ BookmarkStore.kt          즐겨찾기 주소 목록
+│  ├─ TabStateStore.kt          열려 있던 브라우저 탭 상태 영속화
+│  ├─ SettingsStore.kt          Wi-Fi 전용 모드 설정 및 네트워크 상태 감시
 │  └─ DetectionStore.kt         탭 하나가 감지한 영상(메모리, 탭별 인스턴스)
 ├─ browser/
 │  ├─ VideoSniffer.kt           ★ 요청을 보고 영상인지 판정 (확장자 → HEAD 2단계)
@@ -168,7 +170,7 @@ FileDownloader              HlsDownloader
 | 동시 다운로드 개수 | `DownloadManagerCore.MAX_CONCURRENT` |
 | 저장 폴더 이름 | `MediaStoreSaver.FOLDER` |
 | 앱 아이콘 | 현재 벡터 임시본. Android Studio의 Image Asset Studio로 교체 권장 |
-| Wi-Fi에서만 받기 | 미구현. `DownloadManagerCore.startJob`에서 `ConnectivityManager` 확인을 추가하면 됩니다 |
+| Wi-Fi에서만 받기 | 브라우저·다운로드 탭 더보기 메뉴에서 토글 가능 (`SettingsStore.kt`, `DownloadManagerCore.kt`) |
 
 ---
 

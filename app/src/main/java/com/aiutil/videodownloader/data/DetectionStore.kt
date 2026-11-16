@@ -2,6 +2,7 @@ package com.aiutil.videodownloader.data
 
 import com.aiutil.videodownloader.download.HlsDownloader
 import com.aiutil.videodownloader.model.DetectedVideo
+import com.aiutil.videodownloader.model.MediaKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -182,7 +183,7 @@ class DetectionStore {
      */
     private fun matchOf(video: DetectedVideo, focus: Long): Match? {
         val key = normalize(video.url)
-        val penalty = subtitlePenalty(video.url)
+        val penalty = hlsPenalty(video)
 
         // 1) DOM이 알려준 주소와 그대로 일치. 많이 보이는 순서를 그대로 쓴다.
         itemIndex.forEachIndexed { index, item ->
@@ -209,17 +210,23 @@ class DetectionStore {
     }
 
     /**
-     * 자막 트랙은 뒤로 민다.
+     * 같은 영상의 HLS 후보들 사이에서 마스터 플레이리스트를 최우선으로 둔다.
      *
-     * 한 영상의 영상 트랙과 자막 트랙은 같은 미디어 번호를 쓴다. 그래서 순위가
-     * 같아지고, 보통 나중에 불리는 자막이 이겨 버린다.
+     * 마스터(/pl/)와 비디오 전용 하위 트랙(/vid/)·자막(/sub/)·오디오(/mp4a/)가 모두
+     * 같은 미디어 번호를 쓰므로, 페널티를 주지 않으면 나중에 불린 하위 트랙이 마스터를 덮어쓴다.
      */
-    private fun subtitlePenalty(url: String): Int =
-        if (HlsDownloader.looksLikeNonVideo(url)) RANK_SUBTITLE_PENALTY else 0
+    private fun hlsPenalty(video: DetectedVideo): Int {
+        if (video.kind != MediaKind.HLS) return 0
+        return when (HlsDownloader.hlsCandidatePriority(video.url)) {
+            0 -> 0
+            1 -> RANK_NON_MASTER_PENALTY
+            2 -> RANK_VARIANT_VIDEO_PENALTY
+            else -> RANK_SUBTITLE_PENALTY
+        }
+    }
 
     /** 주소에 박힌 긴 숫자(미디어 번호)를 뽑는다. */
-    private fun mediaKeys(url: String): Set<String> =
-        MEDIA_ID.findAll(url).map { it.value }.toSet()
+    private fun mediaKeys(url: String): Set<String> = extractMediaKeys(url)
 
     private fun reset(pageUrl: String) {
         currentPage = pageUrl
@@ -246,24 +253,31 @@ class DetectionStore {
         java.net.URL(url).host.lowercase()
     }.getOrDefault("")
 
-    private companion object {
-        const val MAX_VIDEOS = 50
-        const val MAX_INSPECTED = 600
+    companion object {
+        private const val MAX_VIDEOS = 50
+        private const val MAX_INSPECTED = 600
 
         /** 미디어 번호로 볼 만한 길이의 숫자. 짧은 숫자는 해상도·날짜 등 잡음이 많다. */
-        val MEDIA_ID = Regex("""\d{10,}""")
+        private val MEDIA_ID = Regex("""\d{10,}""")
+
+        fun extractMediaKeys(url: String): Set<String> =
+            MEDIA_ID.findAll(url).map { it.value }.toSet()
 
         /** 주소가 그대로 맞은 것들(0, 1, 2 …) 뒤에 오도록 충분히 큰 값을 쓴다. */
-        const val RANK_MEDIA_KEY = 1_000
-        const val RANK_RECENT = 2_000
+        private const val RANK_MEDIA_KEY = 1_000
+        private const val RANK_RECENT = 2_000
 
-        /** 자막으로 보이는 주소는 어떤 등급이든 영상보다 뒤로 간다. */
-        const val RANK_SUBTITLE_PENALTY = 10_000
+        /** 마스터 플레이리스트가 확실하지 않거나 비디오 전용 하위 트랙일 때 뒤로 민다. */
+        private const val RANK_NON_MASTER_PENALTY = 100
+        private const val RANK_VARIANT_VIDEO_PENALTY = 300
+
+        /** 자막·오디오 전용으로 보이는 주소는 어떤 등급이든 영상보다 뒤로 간다. */
+        private const val RANK_SUBTITLE_PENALTY = 10_000
 
         /** 스크롤이 멎기 직전에 미리 요청된 스트림까지 품기 위한 여유. */
-        const val MATCH_BEFORE_MS = 1_000L
+        private const val MATCH_BEFORE_MS = 1_000L
 
         /** 영상이 화면에 들어온 뒤 스트림 요청이 들어오기까지의 여유. */
-        const val MATCH_AFTER_MS = 4_000L
+        private const val MATCH_AFTER_MS = 4_000L
     }
 }

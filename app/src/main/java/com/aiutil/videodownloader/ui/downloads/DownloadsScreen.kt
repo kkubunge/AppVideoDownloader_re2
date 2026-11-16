@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aiutil.videodownloader.App
 import com.aiutil.videodownloader.model.DownloadItem
+import com.aiutil.videodownloader.model.DownloadPhase
 import com.aiutil.videodownloader.model.DownloadStatus
 import com.aiutil.videodownloader.model.MediaKind
 import com.aiutil.videodownloader.util.Clip
@@ -86,6 +88,7 @@ private fun BulkActionBar(items: List<DownloadItem>) {
         it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELED
     }
     var menuOpen by remember { mutableStateOf(false) }
+    val wifiOnly by App.settings.wifiOnly.collectAsStateWithLifecycle()
 
     Surface(tonalElevation = 2.dp) {
         Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp)) {
@@ -131,6 +134,14 @@ private fun BulkActionBar(items: List<DownloadItem>) {
                             onClick = {
                                 menuOpen = false
                                 App.downloads.clearFailed()
+                            },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Wi-Fi에서만 받기: ${if (wifiOnly) "켜짐" else "꺼짐"}") },
+                            onClick = {
+                                menuOpen = false
+                                App.settings.setWifiOnly(!wifiOnly)
                             },
                         )
                     }
@@ -258,16 +269,31 @@ fun LinkMenu(item: DownloadItem, onOpenLink: (String) -> Unit) {
 
 private fun statusLine(item: DownloadItem): String = when (item.status) {
     DownloadStatus.QUEUED -> "대기 중"
-    DownloadStatus.PAUSED -> "일시정지 · ${sizeLine(item)}"
+    DownloadStatus.PAUSED ->
+        item.errorMessage?.let { "일시정지 ($it) · ${sizeLine(item)}" }
+            ?: "일시정지 · ${sizeLine(item)}"
     DownloadStatus.CANCELED -> "취소됨"
     DownloadStatus.FAILED -> item.errorMessage ?: "다운로드 실패"
     DownloadStatus.COMPLETED -> "완료"
-    DownloadStatus.RUNNING ->
-        if (item.kind == MediaKind.HLS && item.segmentCount > 0) {
-            "${item.segmentIndex}/${item.segmentCount} 조각 · ${Format.bytes(item.bytesDownloaded)}"
-        } else {
-            sizeLine(item)
-        }
+    DownloadStatus.RUNNING -> when (item.phase) {
+        DownloadPhase.REMUXING ->
+            "MP4 변환 중… · ${Format.bytes(item.bytesDownloaded + item.audioBytesDownloaded)}"
+
+        DownloadPhase.AUDIO ->
+            if (item.audioSegmentCount > 0) {
+                "음성 트랙 ${item.audioSegmentIndex}/${item.audioSegmentCount} 조각 · " +
+                    Format.bytes(item.bytesDownloaded + item.audioBytesDownloaded)
+            } else {
+                "음성 트랙 받는 중… · ${Format.bytes(item.bytesDownloaded)}"
+            }
+
+        DownloadPhase.VIDEO ->
+            if (item.kind == MediaKind.HLS && item.segmentCount > 0) {
+                "${item.segmentIndex}/${item.segmentCount} 조각 · ${Format.bytes(item.bytesDownloaded)}"
+            } else {
+                sizeLine(item)
+            }
+    }
 }
 
 private fun sizeLine(item: DownloadItem): String = when {
