@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">동영상 다운로더</string>
+    <string name="app_name">꺼벙이 다운로더</string>
 
     <string name="tab_browser">브라우저</string>
     <string name="tab_downloads">다운로드</string>

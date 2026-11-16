@@ -29,10 +29,10 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * ë‹¤ìš´ë¡œë“œ ì‘ì—…ì˜ ì‹¤ì œ ì£¼ì¸. UIì™€ ì„œë¹„ìŠ¤ëŠ” ì—¬ê¸°ì— ëª…ë ¹ë§Œ ë³´ë‚¸ë‹¤.
+ * ´Ù¿î·Îµå ÀÛ¾÷ÀÇ ½ÇÁ¦ ÁÖÀÎ. UI¿Í ¼­ºñ½º´Â ¿©±â¿¡ ¸í·É¸¸ º¸³½´Ù.
  *
- * ì‘ì—…ì€ ì•± í”„ë¡œì„¸ìŠ¤ ìˆ˜ëª… ë™ì•ˆ ì‚´ì•„ ìˆëŠ” ìŠ¤ì½”í”„ì—ì„œ ëŒê³ , [DownloadService]ëŠ” í”„ë¡œì„¸ìŠ¤ê°€
- * ì£½ì§€ ì•Šë„ë¡ í¬ê·¸ë¼ìš´ë“œ ìƒíƒœë§Œ ë¶™ì¡ì•„ ì¤€ë‹¤.
+ * ÀÛ¾÷Àº ¾Û ÇÁ·Î¼¼½º ¼ö¸í µ¿¾È »ì¾Æ ÀÖ´Â ½ºÄÚÇÁ¿¡¼­ µ¹°í, [DownloadService]´Â ÇÁ·Î¼¼½º°¡
+ * Á×Áö ¾Êµµ·Ï Æ÷±×¶ó¿îµå »óÅÂ¸¸ ºÙÀâ¾Æ ÁØ´Ù.
  */
 class DownloadManagerCore(
     private val appContext: Context,
@@ -44,10 +44,10 @@ class DownloadManagerCore(
     private val jobs = ConcurrentHashMap<String, Job>()
     private val limiter = Semaphore(MAX_CONCURRENT)
 
-    /** ë°›ëŠ” ì¤‘ì¸ ì„ì‹œ íŒŒì¼. ì™„ë£Œë˜ê¸° ì „ê¹Œì§€ëŠ” ê°¤ëŸ¬ë¦¬ì— ë³´ì´ì§€ ì•ŠëŠ”ë‹¤. */
+    /** ¹Ş´Â ÁßÀÎ ÀÓ½Ã ÆÄÀÏ. ¿Ï·áµÇ±â Àü±îÁö´Â °¶·¯¸®¿¡ º¸ÀÌÁö ¾Ê´Â´Ù. */
     private fun partFile(id: String) = File(File(appContext.cacheDir, "downloads"), "$id.part")
 
-    /** HLS ë¶„ë¦¬ ì˜¤ë””ì˜¤ íŠ¸ë™ ì„ì‹œ íŒŒì¼. */
+    /** HLS ºĞ¸® ¿Àµğ¿À Æ®·¢ ÀÓ½Ã ÆÄÀÏ. */
     private fun audioPartFile(id: String) = File(File(appContext.cacheDir, "downloads"), "$id.audio")
 
     fun enqueue(
@@ -73,7 +73,7 @@ class DownloadManagerCore(
             audioUrl = audioUrl,
         )
         store.add(item)
-        // ë°›ê¸° ì‹œì‘í•œ ì‹œì ì— ê¸°ë¡í•´ ë‘”ë‹¤. ì¤‘ê°„ì— ì‹¤íŒ¨í•´ë„ "ì‹œë„í•œ ì  ìˆë‹¤"ëŠ” ë‚¨ì•„ì•¼ í•œë‹¤.
+        // ¹Ş±â ½ÃÀÛÇÑ ½ÃÁ¡¿¡ ±â·ÏÇØ µĞ´Ù. Áß°£¿¡ ½ÇÆĞÇØµµ "½ÃµµÇÑ Àû ÀÖ´Ù"´Â ³²¾Æ¾ß ÇÑ´Ù.
         history.record(item)
         startJob(id)
         return id
@@ -86,14 +86,14 @@ class DownloadManagerCore(
         jobs[id]?.cancel()
     }
 
-    /** Wi-Fi ì „ìš© ëª¨ë“œì—ì„œ ë¹„ê³¼ê¸ˆ ë„¤íŠ¸ì›Œí¬ê°€ ëŠê²¼ì„ ë•Œ ì§„í–‰ ì¤‘ ì‘ì—…ì„ ëª¨ë‘ ë©ˆì¶˜ë‹¤. */
+    /** Wi-Fi Àü¿ë ¸ğµå¿¡¼­ ºñ°ú±İ ³×Æ®¿öÅ©°¡ ²÷°åÀ» ¶§ ÁøÇà Áß ÀÛ¾÷À» ¸ğµÎ ¸ØÃá´Ù. */
     fun pauseAllForWifi() {
         val active = store.items.value.filter { it.status.isActive }
         if (active.isEmpty()) return
-        DebugLog.log("ë„¤íŠ¸ì›Œí¬", "Wi-Fi ì—°ê²° í•´ì œë¡œ ì§„í–‰ ì¤‘ ì‘ì—… ${active.size}ê±´ ì¼ì‹œì •ì§€")
+        DebugLog.log("³×Æ®¿öÅ©", "Wi-Fi ¿¬°á ÇØÁ¦·Î ÁøÇà Áß ÀÛ¾÷ ${active.size}°Ç ÀÏ½ÃÁ¤Áö")
         active.forEach { item ->
             store.update(item.id) {
-                it.copy(status = DownloadStatus.PAUSED, errorMessage = "Wi-Fiê°€ ëŠê²¨ ì¼ì‹œì •ì§€ë¨")
+                it.copy(status = DownloadStatus.PAUSED, errorMessage = "Wi-Fi°¡ ²÷°Ü ÀÏ½ÃÁ¤ÁöµÊ")
             }
             jobs[item.id]?.cancel()
         }
@@ -134,7 +134,7 @@ class DownloadManagerCore(
         startJob(id)
     }
 
-    /** ëª©ë¡ì—ì„œ ì§€ìš´ë‹¤. [deleteFile]ì´ë©´ ì €ì¥ëœ ì˜ìƒ íŒŒì¼ê¹Œì§€ ì§€ìš´ë‹¤. */
+    /** ¸ñ·Ï¿¡¼­ Áö¿î´Ù. [deleteFile]ÀÌ¸é ÀúÀåµÈ ¿µ»ó ÆÄÀÏ±îÁö Áö¿î´Ù. */
     fun remove(id: String, deleteFile: Boolean) {
         val item = store.get(id)
         jobs[id]?.cancel()
@@ -143,16 +143,16 @@ class DownloadManagerCore(
         if (deleteFile && item?.outputUri != null) {
             runCatching {
                 appContext.contentResolver.delete(Uri.parse(item.outputUri), null, null)
-            }.onFailure { Log.w(TAG, "ì €ì¥ëœ íŒŒì¼ ì‚­ì œ ì‹¤íŒ¨", it) }
+            }.onFailure { Log.w(TAG, "ÀúÀåµÈ ÆÄÀÏ »èÁ¦ ½ÇÆĞ", it) }
         }
         store.remove(id)
     }
 
     /**
-     * ë³´ê´€í•¨ì˜ í•­ëª©ì„ ê°™ì€ ì£¼ì†Œë¡œ ë‹¤ì‹œ ë°›ëŠ”ë‹¤.
+     * º¸°üÇÔÀÇ Ç×¸ñÀ» °°Àº ÁÖ¼Ò·Î ´Ù½Ã ¹Ş´Â´Ù.
      *
-     * ìŠ¤íŠ¸ë¦¼ ì£¼ì†Œì—ëŠ” ë³´í†µ ìœ íš¨ ê¸°ê°„ì´ ìˆì–´ì„œ ì‹œê°„ì´ ì§€ë‚¬ìœ¼ë©´ ì‹¤íŒ¨í•œë‹¤.
-     * ê·¸ë•ŒëŠ” 'ì›ë³¸ í˜ì´ì§€ ì—´ê¸°'ë¡œ ë‹¤ì‹œ ì°¾ì•„ì•¼ í•œë‹¤.
+     * ½ºÆ®¸² ÁÖ¼Ò¿¡´Â º¸Åë À¯È¿ ±â°£ÀÌ ÀÖ¾î¼­ ½Ã°£ÀÌ Áö³µÀ¸¸é ½ÇÆĞÇÑ´Ù.
+     * ±×¶§´Â '¿øº» ÆäÀÌÁö ¿­±â'·Î ´Ù½Ã Ã£¾Æ¾ß ÇÑ´Ù.
      */
     fun redownload(item: DownloadItem): String = enqueue(
         url = item.url,
@@ -163,7 +163,7 @@ class DownloadManagerCore(
         audioUrl = item.audioUrl,
     )
 
-    /** ì—¬ëŸ¬ í•­ëª©ì„ í•œ ë²ˆì— ì§€ìš´ë‹¤. ë³´ê´€í•¨ì˜ ì„ íƒ ì‚­ì œê°€ ì“´ë‹¤. */
+    /** ¿©·¯ Ç×¸ñÀ» ÇÑ ¹ø¿¡ Áö¿î´Ù. º¸°üÇÔÀÇ ¼±ÅÃ »èÁ¦°¡ ¾´´Ù. */
     fun removeAll(ids: Collection<String>, deleteFile: Boolean) {
         if (ids.isEmpty()) return
         val idSet = ids.toSet()
@@ -175,7 +175,7 @@ class DownloadManagerCore(
             if (deleteFile && item.outputUri != null) {
                 runCatching {
                     appContext.contentResolver.delete(Uri.parse(item.outputUri), null, null)
-                }.onFailure { Log.w(TAG, "ì €ì¥ëœ íŒŒì¼ ì‚­ì œ ì‹¤íŒ¨: ${item.fileName}", it) }
+                }.onFailure { Log.w(TAG, "ÀúÀåµÈ ÆÄÀÏ »èÁ¦ ½ÇÆĞ: ${item.fileName}", it) }
             }
         }
 
@@ -186,7 +186,7 @@ class DownloadManagerCore(
         store.items.value.filter { it.status.isActive }.forEach { pause(it.id) }
     }
 
-    /** ë©ˆì¶° ë‘” ê²ƒì„ í•œêº¼ë²ˆì— ë‹¤ì‹œ ì‹œì‘í•œë‹¤. ë™ì‹œ ì‹¤í–‰ ìˆ˜ëŠ” [MAX_CONCURRENT]ê°€ ì¡°ì ˆí•œë‹¤. */
+    /** ¸ØÃç µĞ °ÍÀ» ÇÑ²¨¹ø¿¡ ´Ù½Ã ½ÃÀÛÇÑ´Ù. µ¿½Ã ½ÇÇà ¼ö´Â [MAX_CONCURRENT]°¡ Á¶ÀıÇÑ´Ù. */
     fun resumeAll() {
         store.items.value
             .filter { it.status == DownloadStatus.PAUSED }
@@ -199,7 +199,7 @@ class DownloadManagerCore(
             .forEach { retry(it.id) }
     }
 
-    /** ì‹¤íŒ¨Â·ì·¨ì†Œë¡œ ëë‚œ í•­ëª©ì„ ëª©ë¡ì—ì„œ ì¹˜ìš´ë‹¤. ì €ì¥ëœ ì˜ìƒ íŒŒì¼ì€ ê±´ë“œë¦¬ì§€ ì•ŠëŠ”ë‹¤. */
+    /** ½ÇÆĞ¡¤Ãë¼Ò·Î ³¡³­ Ç×¸ñÀ» ¸ñ·Ï¿¡¼­ Ä¡¿î´Ù. ÀúÀåµÈ ¿µ»ó ÆÄÀÏÀº °Çµå¸®Áö ¾Ê´Â´Ù. */
     fun clearFailed() {
         val isFailure = { item: DownloadItem ->
             item.status == DownloadStatus.FAILED || item.status == DownloadStatus.CANCELED
@@ -220,7 +220,7 @@ class DownloadManagerCore(
             store.update(id) {
                 it.copy(
                     status = DownloadStatus.PAUSED,
-                    errorMessage = "Wi-Fi ì—°ê²° ëŒ€ê¸° ì¤‘ (Wi-Fi ì „ìš© ëª¨ë“œ)",
+                    errorMessage = "Wi-Fi ¿¬°á ´ë±â Áß (Wi-Fi Àü¿ë ¸ğµå)",
                 )
             }
             return
@@ -244,15 +244,15 @@ class DownloadManagerCore(
             store.update(id) {
                 it.copy(
                     status = DownloadStatus.PAUSED,
-                    errorMessage = "Wi-Fi ì—°ê²° ëŒ€ê¸° ì¤‘ (Wi-Fi ì „ìš© ëª¨ë“œ)",
+                    errorMessage = "Wi-Fi ¿¬°á ´ë±â Áß (Wi-Fi Àü¿ë ¸ğµå)",
                 )
             }
             return
         }
 
         store.update(id) { it.copy(status = DownloadStatus.RUNNING) }
-        DebugLog.log("ë°›ê¸°", "ì‹œì‘ Â· ${item.kind} Â· ${item.title.take(40)}")
-        DebugLog.log("ë°›ê¸°", "ì£¼ì†Œ ${item.url.take(140)}")
+        DebugLog.log("¹Ş±â", "½ÃÀÛ ¡¤ ${item.kind} ¡¤ ${item.title.take(40)}")
+        DebugLog.log("¹Ş±â", "ÁÖ¼Ò ${item.url.take(140)}")
         val part = partFile(id)
 
         try {
@@ -302,12 +302,12 @@ class DownloadManagerCore(
                 }
             }
         } catch (ce: CancellationException) {
-            // ì¼ì‹œì •ì§€/ì·¨ì†Œë¡œ ëŠê¸´ ê²½ìš°ë‹¤. ìƒíƒœëŠ” ìš”ì²­í•œ ìª½ì´ ì´ë¯¸ ë°”ê¿” ë‘ì—ˆë‹¤.
+            // ÀÏ½ÃÁ¤Áö/Ãë¼Ò·Î ²÷±ä °æ¿ì´Ù. »óÅÂ´Â ¿äÃ»ÇÑ ÂÊÀÌ ÀÌ¹Ì ¹Ù²ã µÎ¾ú´Ù.
             throw ce
         } catch (t: Throwable) {
-            Log.w(TAG, "ë‹¤ìš´ë¡œë“œ ì‹¤íŒ¨: ${item.url}", t)
+            Log.w(TAG, "´Ù¿î·Îµå ½ÇÆĞ: ${item.url}", t)
             val reason = t.message ?: t::class.java.simpleName
-            DebugLog.log("ë°›ê¸°", "ì‹¤íŒ¨ Â· ${t::class.java.simpleName} Â· $reason")
+            DebugLog.log("¹Ş±â", "½ÇÆĞ ¡¤ ${t::class.java.simpleName} ¡¤ $reason")
             store.update(id) { it.copy(status = DownloadStatus.FAILED, errorMessage = reason) }
             history.markFinished(id, DownloadStatus.FAILED, sizeBytes = -1)
             store.get(id)?.let { Notifications.showFailed(appContext, it, reason) }
@@ -315,10 +315,10 @@ class DownloadManagerCore(
     }
 
     /**
-     * HLS ê²°ê³¼ë¥¼ ì¬ìƒ ê°€ëŠ¥í•œ ì»¨í…Œì´ë„ˆë¡œ ì •ë¦¬í•œ ë’¤ ì €ì¥í•œë‹¤.
+     * HLS °á°ú¸¦ Àç»ı °¡´ÉÇÑ ÄÁÅ×ÀÌ³Ê·Î Á¤¸®ÇÑ µÚ ÀúÀåÇÑ´Ù.
      *
-     * ì¡°ê°ë‚œ MP4(fMP4)ë„ ë°˜ë“œì‹œ ê±°ì³ì•¼ í•œë‹¤. ì¡°ê°ì„ ì´ì–´ ë¶™ì¸ ê²ƒë§Œìœ¼ë¡œëŠ” ìƒ‰ì¸ì´
-     * ì—†ì–´ì„œ, í™•ì¥ìê°€ mp4ì—¬ë„ ê°¤ëŸ¬ë¦¬ì™€ ê¸°ë³¸ ì¬ìƒê¸°ê°€ ì—´ì§€ ëª»í•œë‹¤.
+     * Á¶°¢³­ MP4(fMP4)µµ ¹İµå½Ã °ÅÃÄ¾ß ÇÑ´Ù. Á¶°¢À» ÀÌ¾î ºÙÀÎ °Í¸¸À¸·Î´Â »öÀÎÀÌ
+     * ¾ø¾î¼­, È®ÀåÀÚ°¡ mp4¿©µµ °¶·¯¸®¿Í ±âº» Àç»ı±â°¡ ¿­Áö ¸øÇÑ´Ù.
      */
     private fun publishHls(id: String, part: File, outcome: HlsDownloader.Outcome) {
         store.update(id, immediate = false) { it.copy(phase = DownloadPhase.REMUXING) }
@@ -332,13 +332,13 @@ class DownloadManagerCore(
         }
         outcome.audioFile?.delete()
 
-        // ë³€í™˜ì´ ì•ˆ ë˜ë©´ ë°›ì€ ê·¸ëŒ€ë¡œ ë‘”ë‹¤. ì „ìš© ì¬ìƒê¸°ë¡œëŠ” ì—´ ìˆ˜ ìˆë‹¤.
+        // º¯È¯ÀÌ ¾È µÇ¸é ¹ŞÀº ±×´ë·Î µĞ´Ù. Àü¿ë Àç»ı±â·Î´Â ¿­ ¼ö ÀÖ´Ù.
         publish(
             id = id,
             source = part,
             extension = if (outcome.isFragmentedMp4) "mp4" else "ts",
             remuxed = false,
-            note = Mp4Remuxer.lastFailure?.let { "MP4 ë³€í™˜ ì‹¤íŒ¨ Â· $it" },
+            note = Mp4Remuxer.lastFailure?.let { "MP4 º¯È¯ ½ÇÆĞ ¡¤ $it" },
         )
     }
 
@@ -371,17 +371,17 @@ class DownloadManagerCore(
                 remuxed = remuxed,
                 totalBytes = if (it.totalBytes > 0) it.totalBytes else size,
                 completedAt = System.currentTimeMillis(),
-                // ì™„ë£Œëì§€ë§Œ ë³€í™˜ì— ì‹¤íŒ¨í–ˆë‹¤ë©´ ê·¸ ì‚¬ì •ì„ ë‚¨ê²¨ ë‘”ë‹¤.
+                // ¿Ï·áµÆÁö¸¸ º¯È¯¿¡ ½ÇÆĞÇß´Ù¸é ±× »çÁ¤À» ³²°Ü µĞ´Ù.
                 errorMessage = note,
             )
         }
         DebugLog.log(
-            "ì €ì¥",
-            "$fileName Â· ${saved.displayPath} Â· ë³€í™˜ ${
+            "ÀúÀå",
+            "$fileName ¡¤ ${saved.displayPath} ¡¤ º¯È¯ ${
                 when (remuxed) {
-                    true -> "ì„±ê³µ"
-                    false -> "ì‹¤íŒ¨"
-                    null -> "í•´ë‹¹ì—†ìŒ"
+                    true -> "¼º°ø"
+                    false -> "½ÇÆĞ"
+                    null -> "ÇØ´ç¾øÀ½"
                 }
             }",
         )
@@ -397,36 +397,36 @@ class DownloadManagerCore(
     }
 
     /**
-     * ì €ì¥í•˜ê¸° ì „ì— ë°›ì€ ê²ƒì´ ì •ë§ ì˜ìƒì¸ì§€ í™•ì¸í•œë‹¤.
+     * ÀúÀåÇÏ±â Àü¿¡ ¹ŞÀº °ÍÀÌ Á¤¸» ¿µ»óÀÎÁö È®ÀÎÇÑ´Ù.
      *
-     * ì£¼ì†Œê°€ ë§Œë£Œëê±°ë‚˜ ë¡œê·¸ì¸ì´ í•„ìš”í•˜ë©´ ì„œë²„ê°€ ì˜¤ë¥˜ í˜ì´ì§€(HTML)ë¥¼ 200ìœ¼ë¡œ ëŒë ¤ì¤€ë‹¤.
-     * ê·¸ëŒ€ë¡œ ì €ì¥í•˜ë©´ ë³´ê´€í•¨ì— 0ë°”ì´íŠ¸ê±°ë‚˜ ì¬ìƒë˜ì§€ ì•ŠëŠ” íŒŒì¼ì´ ìŒ“ì¸ë‹¤.
-     * ì“¸ ìˆ˜ ì—†ëŠ” íŒŒì¼ì€ ì§€ì›Œì„œ, ë‹¤ì‹œ ì‹œë„í•  ë•Œ ì²˜ìŒë¶€í„° ë°›ê²Œ í•œë‹¤.
+     * ÁÖ¼Ò°¡ ¸¸·áµÆ°Å³ª ·Î±×ÀÎÀÌ ÇÊ¿äÇÏ¸é ¼­¹ö°¡ ¿À·ù ÆäÀÌÁö(HTML)¸¦ 200À¸·Î µ¹·ÁÁØ´Ù.
+     * ±×´ë·Î ÀúÀåÇÏ¸é º¸°üÇÔ¿¡ 0¹ÙÀÌÆ®°Å³ª Àç»ıµÇÁö ¾Ê´Â ÆÄÀÏÀÌ ½×ÀÎ´Ù.
+     * ¾µ ¼ö ¾ø´Â ÆÄÀÏÀº Áö¿ö¼­, ´Ù½Ã ½ÃµµÇÒ ¶§ Ã³À½ºÎÅÍ ¹Ş°Ô ÇÑ´Ù.
      */
     private fun validateOrThrow(file: File) {
         if (!file.exists() || file.length() == 0L) {
             file.delete()
-            throw IOException("ë°›ì€ íŒŒì¼ì´ ë¹„ì–´ ìˆìŠµë‹ˆë‹¤. ì£¼ì†Œê°€ ë§Œë£Œëê±°ë‚˜ ë¡œê·¸ì¸ì´ í•„ìš”í•œ ì˜ìƒì¼ ìˆ˜ ìˆìŠµë‹ˆë‹¤")
+            throw IOException("¹ŞÀº ÆÄÀÏÀÌ ºñ¾î ÀÖ½À´Ï´Ù. ÁÖ¼Ò°¡ ¸¸·áµÆ°Å³ª ·Î±×ÀÎÀÌ ÇÊ¿äÇÑ ¿µ»óÀÏ ¼ö ÀÖ½À´Ï´Ù")
         }
         if (file.length() < MIN_VALID_BYTES) {
             val size = file.length()
             file.delete()
-            throw IOException("ë°›ì€ ë‚´ìš©ì´ ì˜ìƒì´ ì•„ë‹™ë‹ˆë‹¤ (${size}ë°”ì´íŠ¸)")
+            throw IOException("¹ŞÀº ³»¿ëÀÌ ¿µ»óÀÌ ¾Æ´Õ´Ï´Ù (${size}¹ÙÀÌÆ®)")
         }
         when (inspect(file)) {
             Content.UNREADABLE -> {
                 file.delete()
-                throw IOException("ë°›ì€ íŒŒì¼ì„ ì¬ìƒí•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤. ì˜ìƒ ì£¼ì†Œê°€ ì•„ë‹ ìˆ˜ ìˆìŠµë‹ˆë‹¤")
+                throw IOException("¹ŞÀº ÆÄÀÏÀ» Àç»ıÇÒ ¼ö ¾ø½À´Ï´Ù. ¿µ»ó ÁÖ¼Ò°¡ ¾Æ´Ò ¼ö ÀÖ½À´Ï´Ù")
             }
 
-            // ì£¼ì†Œ ëª¨ì–‘ìœ¼ë¡œ ê±°ë¥´ì§€ ëª»í•œ ì˜¤ë””ì˜¤ ì „ìš© íŠ¸ë™ì€ ì—¬ê¸°ì„œ ê±¸ë¦°ë‹¤.
-            // ì†Œë¦¬ë§Œ ë“  íŒŒì¼ì„ ì˜ìƒì´ë¼ê³  ë³´ê´€í•¨ì— ë„£ìœ¼ë©´ ì•ˆ ëœë‹¤.
+            // ÁÖ¼Ò ¸ğ¾çÀ¸·Î °Å¸£Áö ¸øÇÑ ¿Àµğ¿À Àü¿ë Æ®·¢Àº ¿©±â¼­ °É¸°´Ù.
+            // ¼Ò¸®¸¸ µç ÆÄÀÏÀ» ¿µ»óÀÌ¶ó°í º¸°üÇÔ¿¡ ³ÖÀ¸¸é ¾È µÈ´Ù.
             Content.AUDIO_ONLY -> {
                 file.delete()
                 throw IOException(HlsDownloader.AUDIO_ONLY_MESSAGE)
             }
 
-            Content.VIDEO -> DebugLog.log("ê²€ì¦", "í†µê³¼ Â· ì˜ìƒ íŠ¸ë™ ìˆìŒ Â· ${file.length()}ë°”ì´íŠ¸")
+            Content.VIDEO -> DebugLog.log("°ËÁõ", "Åë°ú ¡¤ ¿µ»ó Æ®·¢ ÀÖÀ½ ¡¤ ${file.length()}¹ÙÀÌÆ®")
         }
     }
 
@@ -448,7 +448,7 @@ class DownloadManagerCore(
                 else -> Content.UNREADABLE
             }
         } catch (t: Throwable) {
-            Log.w(TAG, "ë°›ì€ íŒŒì¼ì„ ì½ì§€ ëª»í–ˆë‹¤: ${file.name}", t)
+            Log.w(TAG, "¹ŞÀº ÆÄÀÏÀ» ÀĞÁö ¸øÇß´Ù: ${file.name}", t)
             Content.UNREADABLE
         } finally {
             runCatching { retriever.release() }
@@ -461,16 +461,16 @@ class DownloadManagerCore(
                 appContext,
                 Intent(appContext, DownloadService::class.java),
             )
-        }.onFailure { Log.w(TAG, "ë‹¤ìš´ë¡œë“œ ì„œë¹„ìŠ¤ë¥¼ ì‹œì‘í•˜ì§€ ëª»í–ˆë‹¤", it) }
+        }.onFailure { Log.w(TAG, "´Ù¿î·Îµå ¼­ºñ½º¸¦ ½ÃÀÛÇÏÁö ¸øÇß´Ù", it) }
     }
 
     companion object {
         private const val TAG = "DownloadManager"
 
-        /** ë™ì‹œì— ë°›ëŠ” ê°œìˆ˜. ëª¨ë°”ì¼ íšŒì„ ì—ì„œ ì´ë³´ë‹¤ ëŠ˜ë¦¬ë©´ ì˜¤íˆë ¤ ëŠë ¤ì§„ë‹¤. */
+        /** µ¿½Ã¿¡ ¹Ş´Â °³¼ö. ¸ğ¹ÙÀÏ È¸¼±¿¡¼­ ÀÌº¸´Ù ´Ã¸®¸é ¿ÀÈ÷·Á ´À·ÁÁø´Ù. */
         const val MAX_CONCURRENT = 3
 
-        /** ì´ë³´ë‹¤ ì‘ìœ¼ë©´ ì˜ìƒì´ ì•„ë‹ˆë¼ ì˜¤ë¥˜ í˜ì´ì§€ë¡œ ë³¸ë‹¤. */
+        /** ÀÌº¸´Ù ÀÛÀ¸¸é ¿µ»óÀÌ ¾Æ´Ï¶ó ¿À·ù ÆäÀÌÁö·Î º»´Ù. */
         const val MIN_VALID_BYTES = 32L * 1024
     }
 }

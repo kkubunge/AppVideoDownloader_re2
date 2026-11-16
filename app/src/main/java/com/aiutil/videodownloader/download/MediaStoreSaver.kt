@@ -14,14 +14,14 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 /**
- * 완성된 파일을 사용자가 볼 수 있는 곳(Movies/동영상 다운로더)으로 옮긴다.
+ * 완성된 파일을 사용자가 볼 수 있는 곳(Movies/꺼벙이 다운로더)으로 옮긴다.
  *
  * 받는 동안에는 앱 전용 캐시에 두고, 끝났을 때만 공용 저장소로 옮긴다. 그래야 중간에 끊긴
  * 파일이 갤러리에 나타나지 않고, 이어받기 로직도 단순해진다.
  */
 object MediaStoreSaver {
 
-    private const val FOLDER = "동영상 다운로더"
+    private const val FOLDER = "꺼벙이 다운로더"
 
     /** 이름 충돌로 거절당했을 때 번호를 바꿔 다시 시도할 횟수. */
     private const val NAME_ATTEMPTS = 5

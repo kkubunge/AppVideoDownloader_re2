@@ -47,13 +47,13 @@ object Notifications {
         )
     }
 
-    /** ì§„í–‰ ì¤‘ì¸ ëª¨ë“  ë‹¤ìš´ë¡œë“œë¥¼ í•œ ì¤„ë¡œ ìš”ì•½í•˜ëŠ” í¬ê·¸ë¼ìš´ë“œ ì•Œë¦¼. */
+    /** ÁøÇà ÁßÀÎ ¸ğµç ´Ù¿î·Îµå¸¦ ÇÑ ÁÙ·Î ¿ä¾àÇÏ´Â Æ÷±×¶ó¿îµå ¾Ë¸². */
     fun buildProgressNotification(context: Context, active: List<DownloadItem>): Notification {
         val running = active.filter { it.status == DownloadStatus.RUNNING }
         val title = when {
-            active.isEmpty() -> "ë‹¤ìš´ë¡œë“œ ì •ë¦¬ ì¤‘"
+            active.isEmpty() -> "´Ù¿î·Îµå Á¤¸® Áß"
             active.size == 1 -> active.first().title.take(40)
-            else -> "${active.size}ê°œ ë‹¤ìš´ë¡œë“œ ì¤‘"
+            else -> "${active.size}°³ ´Ù¿î·Îµå Áß"
         }
 
         val remuxing = running.any { it.phase == DownloadPhase.REMUXING }
@@ -63,10 +63,10 @@ object Notifications {
         } else 0
 
         val text = when {
-            running.isEmpty() -> "ëŒ€ê¸° ì¤‘"
-            remuxing -> "MP4 ë³€í™˜ ì¤‘â€¦"
+            running.isEmpty() -> "´ë±â Áß"
+            remuxing -> "MP4 º¯È¯ Áß¡¦"
             determinate -> "$percent%"
-            else -> "ë°›ëŠ” ì¤‘â€¦"
+            else -> "¹Ş´Â Áß¡¦"
         }
 
         return NotificationCompat.Builder(context, CHANNEL_PROGRESS)
@@ -84,7 +84,7 @@ object Notifications {
     fun showCompleted(context: Context, item: DownloadItem) {
         val notification = NotificationCompat.Builder(context, CHANNEL_DONE)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("ë‹¤ìš´ë¡œë“œ ì™„ë£Œ")
+            .setContentTitle("´Ù¿î·Îµå ¿Ï·á")
             .setContentText(item.title.take(60))
             .setAutoCancel(true)
             .setContentIntent(openAppIntent(context))
@@ -95,8 +95,8 @@ object Notifications {
     fun showFailed(context: Context, item: DownloadItem, reason: String) {
         val notification = NotificationCompat.Builder(context, CHANNEL_DONE)
             .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("ë‹¤ìš´ë¡œë“œ ì‹¤íŒ¨")
-            .setContentText("${item.title.take(30)} Â· $reason")
+            .setContentTitle("´Ù¿î·Îµå ½ÇÆĞ")
+            .setContentText("${item.title.take(30)} ¡¤ $reason")
             .setStyle(NotificationCompat.BigTextStyle().bigText(reason))
             .setAutoCancel(true)
             .setContentIntent(openAppIntent(context))
@@ -104,7 +104,7 @@ object Notifications {
         notify(context, item.id.hashCode(), notification)
     }
 
-    /** POST_NOTIFICATIONS ê¶Œí•œì´ ì—†ìœ¼ë©´ ì¡°ìš©íˆ ë„˜ì–´ê°„ë‹¤. ë‹¤ìš´ë¡œë“œ ìì²´ëŠ” ê³„ì†ë˜ì–´ì•¼ í•œë‹¤. */
+    /** POST_NOTIFICATIONS ±ÇÇÑÀÌ ¾øÀ¸¸é Á¶¿ëÈ÷ ³Ñ¾î°£´Ù. ´Ù¿î·Îµå ÀÚÃ¼´Â °è¼ÓµÇ¾î¾ß ÇÑ´Ù. */
     private fun notify(context: Context, id: Int, notification: Notification) {
         runCatching { NotificationManagerCompat.from(context).notify(id, notification) }
     }
